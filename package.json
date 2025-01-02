@@ -1,0 +1,24 @@
+{
+  "name": "pingy",
+  "version": "1.0.0",
+  "description": "An auto-pinger bot for discord",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "ping",
+    "auto",
+    "bot",
+    "discord",
+    "spam"
+  ],
+  "author": "relty",
+  "license": "ISC",
+  "dependencies": {
+    "discord.js": "^14.17.2",
+    "dotenv": "^16.4.7"
+  }
+}
