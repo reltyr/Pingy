@@ -202,7 +202,7 @@ client.on('interactionCreate', async interaction => {
                 flags: MessageFlags.Ephemeral
             });
 
-            console.error('Error awaiting message component:', err , '\n'); //
+            console.error('Error awaiting message component:', err , '\n');
         }
     }
 });
