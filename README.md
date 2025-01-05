@@ -28,7 +28,7 @@ Pingy is a versatile discord bot made to annoy your friends and such by pinging 
 4. A Discord Bot Token.
 5. A Discord Bot Client ID.
 
-You can get the token and client id from the [Discord Developer Portal](https://discord.com/developers/applications).
+You can get the Token and Client ID from the [Discord Developer Portal](https://discord.com/developers/applications).
 
 ### Steps
 
@@ -119,7 +119,7 @@ This project is licensed under the [MIT LICENSE](LICENSE).
 
 ## Support
 
-If you encounter any issues or have suggestions, please open an issue on the [GitHub Repository](https://github.com/reltyr/pingy/issues).
+If you encounter any issues or have suggestions, please open an issue on the [GitHub Repository](https://github.com/reltyr/pingy/issues) or contact me on [Discord](https://discord.com/users/731848326999441440).
 
 ---
 
