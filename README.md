@@ -23,7 +23,7 @@ Pingy is a versatile discord bot made to annoy your friends and such by pinging 
 ### Prerequisites
 
 1. Node.js v16.9.0 or higher (Discord.js v14 requirement).
-2. A Discord Bot token. You can get one from the [Discord Developer Portal](https://discord.com/developers/applications).
+2. A Discord Bot token and Client Id. You can get them from the [Discord Developer Portal](https://discord.com/developers/applications).
 
 ### Steps
 
@@ -39,9 +39,10 @@ Pingy is a versatile discord bot made to annoy your friends and such by pinging 
    ```bash
    npm install
    ```
-4. Configure your bot token in the `.env` file:
+4. Configure your bot token and client id in the `.env` file:
    ```env
    BOT_TOKEN=your-discord-bot-token
+   CLIENT_ID=your-client_id
    ```
 5. Start the bot:
    ```bash
@@ -107,7 +108,7 @@ pingy/
 
 ## License
 
-This project is licensed under the []().
+This project is licensed under the [MIT LICENSE](LICENSE).
 
 ---
 
