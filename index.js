@@ -14,6 +14,7 @@ const MAX_PINGS = 100;
 const CD_MS = 60000;
 
 const cooldowns = new Collection();
+const activePingSessions = new Collection();
 
 const commands = [
     {
@@ -80,10 +81,7 @@ client.once('ready', () => {
 });
 
 client.on('interactionCreate', async interaction => {
-    if (!interaction.isChatInputCommand()) return;
-
-    if (interaction.commandName === 'ping') {
-
+    if (interaction.isChatInputCommand() && interaction.commandName === 'ping') {
         const cooldown = cooldowns.get(interaction.user.id);
 
         if (cooldown) {
@@ -148,19 +146,37 @@ client.on('interactionCreate', async interaction => {
             if (confirmation.customId === 'confirm') {
                 cooldowns.set(interaction.user.id, Date.now() + CD_MS);
 
+                const stopButton = new ButtonBuilder()
+                    .setCustomId(`stop_${interaction.user.id}`)
+                    .setLabel('Stop Pinging')
+                    .setStyle(ButtonStyle.Danger);
+
+                const stopRow = new ActionRowBuilder()
+                    .addComponents(stopButton);
+
                 await confirmation.update({
-                    content: `Attempting to ping ${target} ${amount} time(s) through ${method} ...`,
-                    components: [],
+                    content: `Pinging ${target} ${amount} time(s) through ${method}... Click Stop to interrupt.`,
+                    components: [stopRow],
                     flags: MessageFlags.Ephemeral
                 });
 
+                // Create a session ID for this ping sequence
+                const sessionId = `${interaction.user.id}_${Date.now()}`;
+                activePingSessions.set(sessionId, false); // false means not stopped
+
                 let success = true;
+                let completedPings = 0;
 
                 if (method === 'DMs') {
                     try {
                         for (let i = 0; i < amount; i++) {
-                            await target.send(`${target}, you have been pinged by ${interaction.user} from ${interaction.guild.name} !\n${context ? ` {  ${context}  }` : ''}`);
+                            // Check if the session was stopped
+                            if (activePingSessions.get(sessionId)) {
+                                break;
+                            }
 
+                            await target.send(`${target}, you have been pinged by ${interaction.user} from ${interaction.guild.name} !\n${context ? ` {  ${context}  }` : ''}`);
+                            completedPings++;
                             await new Promise(resolve => setTimeout(resolve, 300));
                         }
                     } catch (err) {
@@ -174,23 +190,35 @@ client.on('interactionCreate', async interaction => {
                     }
                 } else {
                     for (let i = 0; i < amount; i++) {
+                        // Check if the session was stopped
+                        if (activePingSessions.get(sessionId)) {
+                            break;
+                        }
+
                         await interaction.channel.send(`${target}, You have been pinged!\n${context ? ` {  ${context}  } ` : ''}`);
-                        
+                        completedPings++;
                         await new Promise(resolve => setTimeout(resolve, 300));
                     }
                 }
 
-                await interaction.followUp({
-                    content: success
-                        ? `Successfully pinged ${target} ${amount} time(s) through ${method}!`
-                        : `Failed to ping ${target} ${amount} time(s) through ${method}!`,
+                // Clean up the session
+                activePingSessions.delete(sessionId);
+
+                const finalMessage = success
+                    ? (completedPings === amount 
+                        ? `Successfully completed all ${amount} pings to ${target} through ${method}!`
+                        : `Stopped after sending ${completedPings} out of ${amount} pings to ${target} through ${method}.`)
+                    : `Failed to ping ${target} through ${method}!`;
+
+                await interaction.editReply({
+                    content: finalMessage,
+                    components: [],
                     flags: MessageFlags.Ephemeral
                 });
 
             } else {
                 await confirmation.update({
                     content: 'Command cancelled.',
-                    withResponse: true,
                     components: [],
                     flags: MessageFlags.Ephemeral
                 });
@@ -203,6 +231,35 @@ client.on('interactionCreate', async interaction => {
             });
 
             console.error('Error awaiting message component:', err , '\n');
+        }
+    }
+    
+    // Handle stop button clicks
+    if (interaction.isButton() && interaction.customId.startsWith('stop_')) {
+        const userId = interaction.customId.split('_')[1];
+        
+        // Only allow the original user to stop their own ping session
+        if (userId === interaction.user.id) {
+            const sessionId = Array.from(activePingSessions.keys())
+                .find(key => key.startsWith(userId));
+            
+            if (sessionId) {
+                activePingSessions.set(sessionId, true); // Mark the session as stopped
+                await interaction.reply({
+                    content: 'Stopping the ping sequence...',
+                    flags: MessageFlags.Ephemeral
+                });
+            } else {
+                await interaction.reply({
+                    content: 'No active ping sequence found.',
+                    flags: MessageFlags.Ephemeral
+                });
+            }
+        } else {
+            await interaction.reply({
+                content: 'You can only stop your own ping sequences.',
+                flags: MessageFlags.Ephemeral
+            });
         }
     }
 });
