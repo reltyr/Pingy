@@ -16,7 +16,7 @@
     "spam"
   ],
   "author": "relty",
-  "license": "ISC",
+  "license": "MIT",
   "dependencies": {
     "discord.js": "^14.17.2",
     "dotenv": "^16.4.7"
