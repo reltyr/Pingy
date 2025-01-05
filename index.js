@@ -1,6 +1,7 @@
 import { Client, GatewayIntentBits, Collection, REST, Routes, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } from 'discord.js';
 import 'dotenv/config';
 
+// Initializes the Discord client with the necessary intents for guild and direct message interactions.
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
@@ -15,7 +16,9 @@ const CD_MS = 60000;
 
 const cooldowns = new Collection();
 const activePingSessions = new Collection();
+const activeUsers = new Collection();
 
+// Defines the slash commands, its parameters, and validation rules such as minimum/maximum values.
 const commands = [
     {
         name: 'ping',
@@ -61,6 +64,7 @@ const commands = [
     }
 ];
 
+// Configures the REST client for Discord's API using the bot's token from the .env file.
 const rest = new REST({ version: '10' }).setToken(process.env.BOT_TOKEN);
 
 (async () => {
@@ -82,6 +86,19 @@ client.once('ready', () => {
 
 client.on('interactionCreate', async interaction => {
     if (interaction.isChatInputCommand() && interaction.commandName === 'ping') {
+        if (activeUsers.has(interaction.user.id)) {
+            return interaction.reply({
+                embeds: [{
+                    color: 0xFF0000,
+                    title: 'Command in Progress',
+                    description: '⚠️ You already have an active ping command running. Please wait for it to finish.',
+                }],
+                flags: MessageFlags.Ephemeral
+            });
+        }
+
+
+        // Checks if the user is currently on cooldown and calculates the remaining time. Prevents command execution if active.
         const cooldown = cooldowns.get(interaction.user.id);
 
         if (cooldown) {
@@ -89,7 +106,13 @@ client.on('interactionCreate', async interaction => {
 
             if (remaining > 0) {
                 return interaction.reply({
-                    content: `You're on cooldown. Please wait ${Math.ceil(remaining / 1000)} seconds before using this command again.`,
+                    embeds: [
+                        {
+                            color: 0xFF0000,
+                            title: 'Cooldown Active',
+                            description: `⏳ You're on cooldown. Please wait **${Math.ceil(remaining / 1000)} seconds** before using this command again.`,
+                        }
+                    ],
                     flags: MessageFlags.Ephemeral
                 });
             }
@@ -102,40 +125,71 @@ client.on('interactionCreate', async interaction => {
 
         if (target.id === client.user.id) {
             return interaction.reply({
-                content: 'I cannot ping myself!',
+                embeds: [
+                    {
+                        color: 0xFF0000,
+                        title: 'Invalid Target',
+                        description: '❌ I cannot ping myself!'
+                    }
+                ],
                 flags: MessageFlags.Ephemeral
             });
         }
 
         if (!target) {
             return interaction.reply({
-                content: 'User not found',
+                embeds: [
+                    {
+                        color: 0xFF0000,
+                        title: 'Invalid Target',
+                        description: '❌ Cannot find the specified user!'
+                    }
+                ],
                 flags: MessageFlags.Ephemeral
             });
         }
 
         if (interaction.guild === null) {
             return interaction.reply({
-                content: 'This command can only be used in a server.',
+                embeds: [
+                    {
+                        color: 0xFF0000,
+                        title: 'Invalid Execution',
+                        description: '❌ This command can only be called in a server.'
+                    }
+                ],
                 flags: MessageFlags.Ephemeral
             });
         }
 
         const confirm = new ButtonBuilder()
             .setCustomId('confirm')
-            .setLabel('Confirm')
+            .setLabel('✔ Confirm')
             .setStyle(ButtonStyle.Success);
         
         const cancel = new ButtonBuilder()
             .setCustomId('cancel')
-            .setLabel('Cancel')
+            .setLabel('❌ Cancel')
             .setStyle(ButtonStyle.Danger);
         
         const row = new ActionRowBuilder()
             .addComponents(confirm, cancel);
         
+        // Creates a confirmation embed to ensure the user acknowledges the action before proceeding with the pings.
+        const embed = {
+            color: 0x00FF00,
+            title: 'Ping Confirmation',
+            fields: [
+                { name: 'Target', value: `**${target}**`, inline: false },
+                { name: 'Amount', value: `**${amount}**`, inline: false },
+                { name: 'Method', value: `**${method}**`, inline: false },
+                { name: 'Context', value: context ? `\` ' ${context} ' \`` : '`None`', inline: false }
+            ],
+            footer: { text: 'Click Confirm to start or Cancel to abort.' },
+        };
+
         const response = await interaction.reply({
-            content: `Are you sure you want to ping ${target} ${amount} time(s) through ${method} ?`,
+            embeds: [embed],
             components: [row],
             flags: MessageFlags.Ephemeral
         });
@@ -144,97 +198,141 @@ client.on('interactionCreate', async interaction => {
             const confirmation = await response.awaitMessageComponent({ time: 30000 });
 
             if (confirmation.customId === 'confirm') {
-                cooldowns.set(interaction.user.id, Date.now() + CD_MS);
+                activeUsers.set(interaction.user.id, true);
 
                 const stopButton = new ButtonBuilder()
                     .setCustomId(`stop_${interaction.user.id}`)
-                    .setLabel('Stop Pinging')
+                    .setLabel('🛑 Stop Pinging')
                     .setStyle(ButtonStyle.Danger);
 
                 const stopRow = new ActionRowBuilder()
                     .addComponents(stopButton);
 
                 await confirmation.update({
-                    content: `Pinging ${target} ${amount} time(s) through ${method}... Click Stop to interrupt.`,
+                    embeds: [
+                        {
+                            color: 0x0000FF,
+                            title: 'Pinging in Progress',
+                            fields: [
+                                { name: 'Target', value: `**${target}**`, inline: true },
+                                { name: 'Method', value: `**${method}**`, inline: true },
+                                { name: 'Pings', value: `**${amount}**`, inline: true }
+                            ],
+                            description: 'Click Stop below to interrupt.',
+                            footer: { text: 'Sit tight while the magic happens!' },
+                        }
+                    ],
                     components: [stopRow],
-                    flags: MessageFlags.Ephemeral
                 });
 
-                // Create a session ID for this ping sequence
+
+                // Generates a unique session ID to track the user's ping sequence and monitor for interruptions.
                 const sessionId = `${interaction.user.id}_${Date.now()}`;
                 activePingSessions.set(sessionId, false); // false means not stopped
 
                 let success = true;
                 let completedPings = 0;
 
-                if (method === 'DMs') {
-                    try {
+                try {
+                    if (method === 'DMs') {
+                        try {
+                            for (let i = 0; i < amount; i++) {
+                                // Check if the session was stopped
+                                if (activePingSessions.get(sessionId)) {
+                                    break;
+                                }
+    
+                                await target.send(`👤 **Pinged By:** ${interaction.user}\n\n🌐 **Server:** ${interaction.guild.name}\n${context ? `\n📜 **Context:** \` ${context} \`` : ''}`);
+                                    
+                                completedPings++;
+                                await new Promise(resolve => setTimeout(resolve, 300));
+                            }
+                        } catch (err) {
+                            await interaction.followUp({
+                                embeds: [
+                                    {
+                                        color: 0xFF0000,
+                                        title: 'Failed to Ping',
+                                        description: `⚠ Could not DM ${target}. They might have DMs disabled.`
+                                    }
+                                ],
+                                flags: MessageFlags.Ephemeral
+                            });
+    
+                            console.error('Error sending DM:', err , '\n');
+                            success = false;
+                        }
+                    } else {
                         for (let i = 0; i < amount; i++) {
                             // Check if the session was stopped
                             if (activePingSessions.get(sessionId)) {
                                 break;
                             }
-
-                            await target.send(`${target}, you have been pinged by ${interaction.user} from ${interaction.guild.name} !\n${context ? ` {  ${context}  }` : ''}`);
+    
+                            await interaction.channel.send(`👤 **Pinged:** ${target}\n${context ? `\n📜 **Context:** \` ${context} \`` : ''}`);
+    
                             completedPings++;
                             await new Promise(resolve => setTimeout(resolve, 300));
                         }
-                    } catch (err) {
-                        await interaction.followUp({
-                            content: `Failed to DM ${target}, they might have DMs disabled.`,
-                            flags: MessageFlags.Ephemeral
-                        });
-
-                        console.error('Error sending DM:', err , '\n');
-                        success = false;
                     }
-                } else {
-                    for (let i = 0; i < amount; i++) {
-                        // Check if the session was stopped
-                        if (activePingSessions.get(sessionId)) {
-                            break;
-                        }
 
-                        await interaction.channel.send(`${target}, You have been pinged!\n${context ? ` {  ${context}  } ` : ''}`);
-                        completedPings++;
-                        await new Promise(resolve => setTimeout(resolve, 300));
+                    if (success) {
+                        cooldowns.set(interaction.user.id, Date.now() + CD_MS);
                     }
+                } finally {
+                    activeUsers.delete(interaction.user.id);
+                    activePingSessions.delete(sessionId);
                 }
-
-                // Clean up the session
-                activePingSessions.delete(sessionId);
 
                 const finalMessage = success
                     ? (completedPings === amount 
-                        ? `Successfully completed all ${amount} pings to ${target} through ${method}!`
-                        : `Stopped after sending ${completedPings} out of ${amount} pings to ${target} through ${method}.`)
-                    : `Failed to ping ${target} through ${method}!`;
+                        ? `✅ Successfully completed all ${amount} pings to ${target} through ${method}!`
+                        : `⏹ Stopped after sending ${completedPings} out of ${amount} pings to ${target} through ${method}.`)
+                    : `❌ Failed to ping ${target} through ${method}!`;
 
                 await interaction.editReply({
-                    content: finalMessage,
-                    components: [],
-                    flags: MessageFlags.Ephemeral
+                    embeds: [
+                        {
+                            color: 0x00FF00,
+                            title: 'Ping Complete',
+                            description: finalMessage,
+                        }
+                    ],
+                    components: []
                 });
 
             } else {
                 await confirmation.update({
-                    content: 'Command cancelled.',
-                    components: [],
-                    flags: MessageFlags.Ephemeral
+                    embeds: [
+                        {
+                            color: 0xFFA500,
+                            title: 'Command Cancelled',
+                            description: '❌ You aborted the ping operation.'
+                        }
+                    ],
+                    components: []
                 });
             }
         } catch (err) {
+
+            activeUsers.delete(interaction.user.id);
+
             await interaction.editReply({
-                content: 'Command timed out.',
-                components: [],
-                flags: MessageFlags.Ephemeral
+                embeds: [
+                    {
+                        color: 0xFF4500,
+                        title: 'Timeout',
+                        description: '⏳ You didn’t respond in time.'
+                    }
+                ],
+                components: []
             });
 
             console.error('Error awaiting message component:', err , '\n');
         }
     }
     
-    // Handle stop button clicks
+    // Listens for stop button interactions and verifies that only the initiating user can stop their ping sequence.
     if (interaction.isButton() && interaction.customId.startsWith('stop_')) {
         const userId = interaction.customId.split('_')[1];
         
@@ -246,18 +344,36 @@ client.on('interactionCreate', async interaction => {
             if (sessionId) {
                 activePingSessions.set(sessionId, true); // Mark the session as stopped
                 await interaction.reply({
-                    content: 'Stopping the ping sequence...',
+                    embeds: [
+                        {
+                            color: 0xFFA500,
+                            title: 'Stopping Pings',
+                            description: '🛑 Stopping the ping sequence...'
+                        }
+                    ],
                     flags: MessageFlags.Ephemeral
                 });
             } else {
                 await interaction.reply({
-                    content: 'No active ping sequence found.',
+                    embeds: [
+                        {
+                            color: 0xFF0000,
+                            title: 'No Active Ping',
+                            description: '❌ No active ping sequence found.'
+                        }
+                    ],
                     flags: MessageFlags.Ephemeral
                 });
             }
         } else {
             await interaction.reply({
-                content: 'You can only stop your own ping sequences.',
+                embeds: [
+                    {
+                        color: 0xFF0000,
+                        title: 'Permission Denied',
+                        description: '❌ You can only stop your own ping sequences.'
+                    }
+                ],
                 flags: MessageFlags.Ephemeral
             });
         }
@@ -265,3 +381,4 @@ client.on('interactionCreate', async interaction => {
 });
 
 client.login(process.env.BOT_TOKEN);
+
