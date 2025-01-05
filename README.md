@@ -24,7 +24,7 @@ Pingy is a versatile discord bot made to annoy your friends and such by pinging 
 
 1. Node.js v16.9.0 or higher (Discord.js v14 requirement).
 2. A Discord Bot Token.
-3. A Discord Bot Client ID
+3. A Discord Bot Client ID.
 
 You can get the token and client id from the [Discord Developer Portal](https://discord.com/developers/applications).
 
